@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getDuration } from '../lib/convert'
 import { formatSize, formatTime } from '../lib/format'
+import type { Dimensions } from '../lib/settings'
 import { defaultClip, type Clip } from '../lib/video'
 import { Timeline } from './Timeline'
 
@@ -15,6 +16,8 @@ type Props = {
   url: string
   clip: Clip | undefined
   onClipChange: (clip: Clip) => void
+  /** Called with the video's size once the browser has opened it. */
+  onDimensions?: (dimensions: Dimensions) => void
   onReset: () => void
   /** Stops the video being swapped while a GIF is being made. */
   locked?: boolean
@@ -25,6 +28,7 @@ export function Editor({
   url,
   clip,
   onClipChange,
+  onDimensions,
   onReset,
   locked,
 }: Props) {
@@ -88,6 +92,10 @@ export function Editor({
     // A width of 0 means the browser can play the sound but not the picture,
     // e.g. HEVC in a browser without HEVC support.
     setPreview(v.videoWidth > 0 ? 'ready' : 'none')
+    // Browsers report the size after applying the phone's rotation.
+    if (v.videoWidth > 0) {
+      onDimensions?.({ width: v.videoWidth, height: v.videoHeight })
+    }
     // Some WebM files report an unknown (infinite) length.
     if (Number.isFinite(v.duration) && v.duration > 0) applyDuration(v.duration)
     else readDurationWithFFmpeg()
@@ -127,6 +135,22 @@ export function Editor({
 
   return (
     <div className="mt-10 w-full max-w-xl text-left">
+      <div className="mb-3 flex items-baseline justify-between gap-3 text-sm">
+        <p className="min-w-0 truncate">
+          <span className="font-medium">{file.name}</span>{' '}
+          <span className="font-mono text-xs text-zinc-500">
+            · {formatSize(file.size)}
+          </span>
+        </p>
+        <button
+          type="button"
+          className="shrink-0 text-xs text-zinc-500 underline-offset-4 hover:underline disabled:opacity-50"
+          disabled={locked}
+          onClick={onReset}
+        >
+          Choose another
+        </button>
+      </div>
       {preview !== 'none' && (
         <video
           ref={video}
@@ -176,23 +200,6 @@ export function Editor({
           Reading the video…
         </p>
       )}
-
-      <div className="mt-4 flex items-baseline justify-between gap-3 text-sm">
-        <p className="min-w-0 truncate">
-          <span className="font-medium">{file.name}</span>{' '}
-          <span className="font-mono text-xs text-zinc-500">
-            · {formatSize(file.size)}
-          </span>
-        </p>
-        <button
-          type="button"
-          className="shrink-0 text-xs text-zinc-500 underline-offset-4 hover:underline disabled:opacity-50"
-          disabled={locked}
-          onClick={onReset}
-        >
-          Choose another
-        </button>
-      </div>
     </div>
   )
 }

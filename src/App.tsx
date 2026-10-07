@@ -1,16 +1,32 @@
 import { useCallback, useEffect, useState } from 'react'
 import { DropZone } from './components/DropZone'
 import { Editor } from './components/Editor'
+import { Settings } from './components/Settings'
 import { convert, preloadEngine, type ConvertProgress } from './lib/convert'
 import { formatSize } from './lib/format'
+import {
+  loadSettings,
+  qualityOf,
+  saveSettings,
+  type Dimensions,
+  type Quality,
+  type Settings as SettingsValue,
+} from './lib/settings'
 import type { Clip } from './lib/video'
 
 function App() {
   // The chosen video, and an object URL the editor can preview it from.
   const [video, setVideo] = useState<{ file: File; url: string }>()
   const [clip, setClip] = useState<Clip>()
+  const [dimensions, setDimensions] = useState<Dimensions>()
+  const [settings, setSettings] = useState(loadSettings)
   const [busy, setBusy] = useState(false)
   const file = video?.file
+
+  function handleSettings(next: SettingsValue) {
+    setSettings(next)
+    saveSettings(next)
+  }
 
   const handleFile = useCallback((chosen: File) => {
     setVideo({ file: chosen, url: URL.createObjectURL(chosen) })
@@ -22,6 +38,7 @@ function App() {
     if (video) URL.revokeObjectURL(video.url)
     setVideo(undefined)
     setClip(undefined)
+    setDimensions(undefined)
   }
 
   // Once a video is open, ignore files dropped on the page instead of letting
@@ -61,13 +78,22 @@ function App() {
               url={video.url}
               clip={clip}
               onClipChange={setClip}
+              onDimensions={setDimensions}
               onReset={handleReset}
               locked={busy}
+            />
+            <Settings
+              settings={settings}
+              onChange={handleSettings}
+              video={dimensions}
+              disabled={busy}
             />
             {clip && (
               <TemporaryConvert
                 file={video.file}
                 clip={clip}
+                quality={qualityOf(settings, dimensions)}
+                label={settings.preset}
                 onBusyChange={setBusy}
               />
             )}
@@ -80,33 +106,30 @@ function App() {
   )
 }
 
-const PRESETS = {
-  Small: { size: 320, fps: 10 },
-  Balanced: { size: 480, fps: 15 },
-  High: { size: 720, fps: 20 },
-}
-type Preset = keyof typeof PRESETS
-
 type Result = {
-  preset: Preset
+  label: string
   url: string
   size: number
   seconds: number
   dimensions?: string
 }
 
-// Temporary: stands in for the settings and result screens (steps 4 and 5)
-// so the selected part of the video can still be converted.
+// Temporary: stands in for the convert and result screen (step 5) so the
+// selected part of the video can still be converted.
 function TemporaryConvert({
   file,
   clip,
+  quality,
+  label,
   onBusyChange,
 }: {
   file: File
   clip: Clip
+  quality: Quality
+  /** The preset's name, shown next to the result. */
+  label: string
   onBusyChange: (busy: boolean) => void
 }) {
-  const [preset, setPreset] = useState<Preset>('Balanced')
   const [progress, setProgress] = useState<ConvertProgress>()
   const [result, setResult] = useState<Result>()
   const [error, setError] = useState<string>()
@@ -126,13 +149,9 @@ function TemporaryConvert({
     onBusyChange(true)
     const startedAt = performance.now()
     try {
-      const gif = await convert(
-        file,
-        { ...clip, ...PRESETS[preset] },
-        setProgress,
-      )
+      const gif = await convert(file, { ...clip, ...quality }, setProgress)
       setResult({
-        preset,
+        label,
         url: URL.createObjectURL(gif),
         size: gif.size,
         seconds: (performance.now() - startedAt) / 1000,
@@ -148,24 +167,8 @@ function TemporaryConvert({
 
   return (
     <div className="mt-6 w-full max-w-xl rounded-lg border border-zinc-200 p-4 text-left text-sm dark:border-zinc-800">
-      <div className="flex gap-2">
-        {(Object.keys(PRESETS) as Preset[]).map((name) => (
-          <button
-            key={name}
-            className={`rounded-lg border px-3 py-1.5 text-sm transition disabled:opacity-50 ${
-              name === preset
-                ? 'border-accent text-accent'
-                : 'border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800'
-            }`}
-            disabled={busy}
-            onClick={() => setPreset(name)}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
       <button
-        className="mt-3 inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
         disabled={busy}
         onClick={handleConvert}
       >
@@ -196,7 +199,7 @@ function TemporaryConvert({
             }}
           />
           <p className="mt-2 font-mono text-xs text-zinc-500">
-            {result.preset} · {result.dimensions} · {formatSize(result.size)} ·
+            {result.label} · {result.dimensions} · {formatSize(result.size)} ·
             took {result.seconds.toFixed(1)}s ·{' '}
             <a className="underline" href={result.url} download="gify.gif">
               download
