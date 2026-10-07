@@ -24,11 +24,14 @@ export type ConvertProgress =
 const INPUT = 'input'
 const PALETTE = 'palette.png'
 const OUTPUT = 'output.gif'
+// Separate names, so reading a video's length can't clash with a conversion.
+const PROBE_INPUT = 'probe-input'
+const PROBE_OUTPUT = 'probe.txt'
 
 let engine: Promise<FFmpeg> | undefined
 
-// The core is ~32MB, so it's only downloaded on the first conversion. It's the
-// single-threaded core on purpose: the multi-threaded one deadlocks on iPhone
+// The core is ~32MB, so it's only downloaded once a video has been chosen.
+// It's the single-threaded core on purpose: the multi-threaded one deadlocks on iPhone
 // (HEVC) videos, so conversions would hang forever. See CLAUDE.md.
 function loadEngine() {
   if (!engine) {
@@ -45,6 +48,43 @@ function loadEngine() {
     engine.catch(() => (engine = undefined))
   }
   return engine
+}
+
+/** Starts downloading the engine early, so it's ready by the time it's needed. */
+export function preloadEngine() {
+  // A failure here shows up on the next conversion, which tries again.
+  loadEngine().catch(() => {})
+}
+
+/** Reads a video's length with FFmpeg, for videos the browser can't open. */
+export async function getDuration(file: File): Promise<number> {
+  const ffmpeg = await loadEngine()
+  try {
+    await ffmpeg.writeFile(PROBE_INPUT, await fetchFile(file))
+    const code = await ffmpeg.ffprobe([
+      '-v',
+      'error',
+      '-show_entries',
+      'format=duration',
+      '-of',
+      'default=noprint_wrappers=1:nokey=1',
+      PROBE_INPUT,
+      '-o',
+      PROBE_OUTPUT,
+    ])
+    const text = String(await ffmpeg.readFile(PROBE_OUTPUT, 'utf8'))
+    const seconds = parseFloat(text)
+    if (code !== 0 || !(seconds > 0)) {
+      throw new Error(
+        `ffprobe couldn't read a duration (exit ${code}): ${text}`,
+      )
+    }
+    return seconds
+  } finally {
+    await Promise.allSettled(
+      [PROBE_INPUT, PROBE_OUTPUT].map((path) => ffmpeg.deleteFile(path)),
+    )
+  }
 }
 
 async function run(ffmpeg: FFmpeg, args: string[]) {

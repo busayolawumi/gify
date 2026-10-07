@@ -29,3 +29,14 @@ export function checkVideo(file: File): string | undefined {
     return `That video is ${formatSize(file.size)}. Gify can take videos up to ${formatSize(MAX_FILE_SIZE)}.`
   }
 }
+
+export type Clip = { start: number; end: number }
+
+// GIFs get huge and slow to make past this.
+export const MAX_CLIP_LENGTH = 15
+export const MIN_CLIP_LENGTH = 0.5
+
+/** The first 5 seconds, or the whole video if it's shorter. */
+export function defaultClip(duration: number): Clip {
+  return { start: 0, end: Math.min(duration, 5) }
+}

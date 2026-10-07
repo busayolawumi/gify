@@ -1,10 +1,44 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { DropZone } from './components/DropZone'
-import { convert, type ConvertProgress } from './lib/convert'
+import { Editor } from './components/Editor'
+import { convert, preloadEngine, type ConvertProgress } from './lib/convert'
 import { formatSize } from './lib/format'
+import type { Clip } from './lib/video'
 
 function App() {
-  const [file, setFile] = useState<File>()
+  // The chosen video, and an object URL the editor can preview it from.
+  const [video, setVideo] = useState<{ file: File; url: string }>()
+  const [clip, setClip] = useState<Clip>()
+  const [busy, setBusy] = useState(false)
+  const file = video?.file
+
+  const handleFile = useCallback((chosen: File) => {
+    setVideo({ file: chosen, url: URL.createObjectURL(chosen) })
+    // Download the engine while the user picks the part they want.
+    preloadEngine()
+  }, [])
+
+  function handleReset() {
+    if (video) URL.revokeObjectURL(video.url)
+    setVideo(undefined)
+    setClip(undefined)
+  }
+
+  // Once a video is open, ignore files dropped on the page instead of letting
+  // the browser leave Gify to open them.
+  useEffect(() => {
+    if (!file) return
+    function ignore(e: DragEvent) {
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+    }
+    window.addEventListener('dragover', ignore)
+    window.addEventListener('drop', ignore)
+    return () => {
+      window.removeEventListener('dragover', ignore)
+      window.removeEventListener('drop', ignore)
+    }
+  }, [file])
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-6">
@@ -20,10 +54,26 @@ function App() {
         <p className="mt-4 max-w-md text-zinc-600 dark:text-zinc-400">
           Turn a short video into a GIF, right here.
         </p>
-        {file ? (
-          <TemporaryConvert file={file} onReset={() => setFile(undefined)} />
+        {video ? (
+          <>
+            <Editor
+              file={video.file}
+              url={video.url}
+              clip={clip}
+              onClipChange={setClip}
+              onReset={handleReset}
+              locked={busy}
+            />
+            {clip && (
+              <TemporaryConvert
+                file={video.file}
+                clip={clip}
+                onBusyChange={setBusy}
+              />
+            )}
+          </>
         ) : (
-          <DropZone onFile={setFile} />
+          <DropZone onFile={handleFile} />
         )}
       </section>
     </main>
@@ -45,14 +95,16 @@ type Result = {
   dimensions?: string
 }
 
-// Temporary: stands in for the editor, settings and result screens (steps
-// 3 to 5) so a chosen video can still be converted. Uses the first 5 seconds.
+// Temporary: stands in for the settings and result screens (steps 4 and 5)
+// so the selected part of the video can still be converted.
 function TemporaryConvert({
   file,
-  onReset,
+  clip,
+  onBusyChange,
 }: {
   file: File
-  onReset: () => void
+  clip: Clip
+  onBusyChange: (busy: boolean) => void
 }) {
   const [preset, setPreset] = useState<Preset>('Balanced')
   const [progress, setProgress] = useState<ConvertProgress>()
@@ -71,11 +123,12 @@ function TemporaryConvert({
   async function handleConvert() {
     setResult(undefined)
     setError(undefined)
+    onBusyChange(true)
     const startedAt = performance.now()
     try {
       const gif = await convert(
         file,
-        { start: 0, end: 5, ...PRESETS[preset] },
+        { ...clip, ...PRESETS[preset] },
         setProgress,
       )
       setResult({
@@ -89,23 +142,13 @@ function TemporaryConvert({
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setProgress(undefined)
+      onBusyChange(false)
     }
   }
 
   return (
-    <div className="mt-10 w-full max-w-md rounded-lg border border-zinc-200 p-4 text-left text-sm dark:border-zinc-800">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="min-w-0 truncate font-medium">{file.name}</p>
-        <button
-          className="shrink-0 text-xs text-zinc-500 underline-offset-4 hover:underline disabled:opacity-50"
-          disabled={busy}
-          onClick={onReset}
-        >
-          Choose another
-        </button>
-      </div>
-      <p className="font-mono text-xs text-zinc-500">{formatSize(file.size)}</p>
-      <div className="mt-4 flex gap-2">
+    <div className="mt-6 w-full max-w-xl rounded-lg border border-zinc-200 p-4 text-left text-sm dark:border-zinc-800">
+      <div className="flex gap-2">
         {(Object.keys(PRESETS) as Preset[]).map((name) => (
           <button
             key={name}
@@ -126,7 +169,7 @@ function TemporaryConvert({
         disabled={busy}
         onClick={handleConvert}
       >
-        Convert first 5 seconds
+        Convert to GIF
       </button>
       {progress && (
         <p className="mt-3 font-mono text-xs">
