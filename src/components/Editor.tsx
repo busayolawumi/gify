@@ -71,11 +71,20 @@ export function Editor({
     return () => cancelAnimationFrame(frame)
   }, [])
 
+  // Pause the preview while a GIF is being made, so FFmpeg gets the CPU.
+  useEffect(() => {
+    const v = video.current
+    if (!v) return
+    if (locked) v.pause()
+    else if (v.paused) v.play().catch(() => {})
+  }, [locked])
+
   function applyDuration(seconds: number) {
     if (durationKnown.current) return
     durationKnown.current = true
     setDuration(seconds)
-    onClipChange(defaultClip(seconds))
+    // Coming back with "Edit again" keeps the selection the user made.
+    if (!latestClip.current) onClipChange(defaultClip(seconds))
   }
 
   // For videos the browser can't open, ask FFmpeg how long they are.

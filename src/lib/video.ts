@@ -40,3 +40,10 @@ export const MIN_CLIP_LENGTH = 0.5
 export function defaultClip(duration: number): Clip {
   return { start: 0, end: Math.min(duration, 5) }
 }
+
+/** The GIF's file name: the video's name with .gif, e.g. IMG_2416.gif. */
+export function gifFileName(videoName: string) {
+  const dot = videoName.lastIndexOf('.')
+  const base = dot > 0 ? videoName.slice(0, dot) : videoName
+  return `${base || 'gify'}.gif`
+}

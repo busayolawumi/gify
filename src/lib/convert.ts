@@ -29,6 +29,7 @@ const PROBE_INPUT = 'probe-input'
 const PROBE_OUTPUT = 'probe.txt'
 
 let engine: Promise<FFmpeg> | undefined
+let engineReady = false
 
 // The core is ~32MB, so it's only downloaded once a video has been chosen.
 // It's the single-threaded core on purpose: the multi-threaded one deadlocks on iPhone
@@ -42,6 +43,7 @@ function loadEngine() {
         ffmpeg.on('log', ({ message }) => console.debug('[ffmpeg]', message))
       }
       await ffmpeg.load({ coreURL, wasmURL })
+      engineReady = true
       return ffmpeg
     })()
     // Let the next conversion try again if this load failed.
@@ -103,13 +105,30 @@ async function run(ffmpeg: FFmpeg, args: string[]) {
   }
 }
 
+/**
+ * Makes a GIF from part of a video. Aborting `signal` cancels it, and the
+ * promise then rejects with the signal's reason.
+ */
 export async function convert(
   file: File,
   options: ConvertOptions,
   onProgress?: (progress: ConvertProgress) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
-  onProgress?.({ stage: 'loading' })
+  signal?.throwIfAborted()
+  if (!engineReady) onProgress?.({ stage: 'loading' })
   const ffmpeg = await loadEngine()
+  signal?.throwIfAborted()
+
+  // FFmpeg can't be interrupted mid-run, so cancelling shuts the engine down.
+  // A fresh one starts loading straight away, ready for another try.
+  function stop() {
+    ffmpeg.terminate()
+    engine = undefined
+    engineReady = false
+    preloadEngine()
+  }
+  signal?.addEventListener('abort', stop, { once: true })
 
   const { start, end, size, fps } = options
   const duration = end - start
@@ -165,11 +184,20 @@ export async function convert(
 
     const data = (await ffmpeg.readFile(OUTPUT)) as Uint8Array<ArrayBuffer>
     return new Blob([data], { type: 'image/gif' })
+  } catch (e) {
+    // Shutting the engine down makes its unfinished work fail. Report that as
+    // the cancel it really was.
+    if (signal?.aborted) throw signal.reason
+    throw e
   } finally {
+    signal?.removeEventListener('abort', stop)
     ffmpeg.off('progress', reportEncoding)
-    // Free the memory these take up inside ffmpeg.wasm.
-    await Promise.allSettled(
-      [INPUT, PALETTE, OUTPUT].map((path) => ffmpeg.deleteFile(path)),
-    )
+    // Free the memory these take up inside ffmpeg.wasm. After a cancel the
+    // whole engine is gone, so there's nothing to free.
+    if (!signal?.aborted) {
+      await Promise.allSettled(
+        [INPUT, PALETTE, OUTPUT].map((path) => ffmpeg.deleteFile(path)),
+      )
+    }
   }
 }

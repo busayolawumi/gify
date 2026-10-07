@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ConvertPanel } from './components/ConvertPanel'
 import { DropZone } from './components/DropZone'
 import { Editor } from './components/Editor'
+import { Result, type GifResult } from './components/Result'
 import { Settings } from './components/Settings'
 import { convert, preloadEngine, type ConvertProgress } from './lib/convert'
-import { formatSize } from './lib/format'
 import {
   loadSettings,
   qualityOf,
   saveSettings,
   type Dimensions,
-  type Quality,
   type Settings as SettingsValue,
 } from './lib/settings'
-import type { Clip } from './lib/video'
+import { gifFileName, type Clip } from './lib/video'
 
 function App() {
   // The chosen video, and an object URL the editor can preview it from.
@@ -20,13 +20,13 @@ function App() {
   const [clip, setClip] = useState<Clip>()
   const [dimensions, setDimensions] = useState<Dimensions>()
   const [settings, setSettings] = useState(loadSettings)
-  const [busy, setBusy] = useState(false)
+  // Set while a GIF is being made.
+  const [progress, setProgress] = useState<ConvertProgress>()
+  const [error, setError] = useState<string>()
+  const [gif, setGif] = useState<GifResult>()
+  const cancel = useRef<AbortController | undefined>(undefined)
+  const busy = progress !== undefined
   const file = video?.file
-
-  function handleSettings(next: SettingsValue) {
-    setSettings(next)
-    saveSettings(next)
-  }
 
   const handleFile = useCallback((chosen: File) => {
     setVideo({ file: chosen, url: URL.createObjectURL(chosen) })
@@ -34,11 +34,57 @@ function App() {
     preloadEngine()
   }, [])
 
-  function handleReset() {
+  function handleSettings(next: SettingsValue) {
+    setSettings(next)
+    saveSettings(next)
+  }
+
+  async function handleConvert() {
+    if (!video || !clip) return
+    const controller = new AbortController()
+    cancel.current = controller
+    setError(undefined)
+    setProgress({ stage: 'loading' })
+    try {
+      const blob = await convert(
+        video.file,
+        { ...clip, ...qualityOf(settings, dimensions) },
+        setProgress,
+        controller.signal,
+      )
+      setGif({
+        blob,
+        url: URL.createObjectURL(blob),
+        name: gifFileName(video.file.name),
+        length: clip.end - clip.start,
+      })
+    } catch (e) {
+      if (!controller.signal.aborted) {
+        console.error(e)
+        setError(
+          'Something went wrong making your GIF. Try again, or try a smaller size or a shorter clip.',
+        )
+      }
+    } finally {
+      cancel.current = undefined
+      setProgress(undefined)
+    }
+  }
+
+  // Back to the editor, keeping the video, selection and settings.
+  function handleEditAgain() {
+    if (gif) URL.revokeObjectURL(gif.url)
+    setGif(undefined)
+  }
+
+  function handleStartOver() {
+    if (gif) URL.revokeObjectURL(gif.url)
     if (video) URL.revokeObjectURL(video.url)
+    setGif(undefined)
     setVideo(undefined)
     setClip(undefined)
     setDimensions(undefined)
+    setError(undefined)
   }
 
   // Once a video is open, ignore files dropped on the page instead of letting
@@ -71,7 +117,15 @@ function App() {
         <p className="mt-4 max-w-md text-zinc-600 dark:text-zinc-400">
           Turn a short video into a GIF, right here.
         </p>
-        {video ? (
+        {!video ? (
+          <DropZone onFile={handleFile} />
+        ) : gif ? (
+          <Result
+            gif={gif}
+            onEditAgain={handleEditAgain}
+            onMakeAnother={handleStartOver}
+          />
+        ) : (
           <>
             <Editor
               file={video.file}
@@ -79,7 +133,7 @@ function App() {
               clip={clip}
               onClipChange={setClip}
               onDimensions={setDimensions}
-              onReset={handleReset}
+              onReset={handleStartOver}
               locked={busy}
             />
             <Settings
@@ -88,126 +142,17 @@ function App() {
               video={dimensions}
               disabled={busy}
             />
-            {clip && (
-              <TemporaryConvert
-                file={video.file}
-                clip={clip}
-                quality={qualityOf(settings, dimensions)}
-                label={settings.preset}
-                onBusyChange={setBusy}
-              />
-            )}
+            <ConvertPanel
+              progress={progress}
+              error={error}
+              disabled={!clip}
+              onConvert={handleConvert}
+              onCancel={() => cancel.current?.abort()}
+            />
           </>
-        ) : (
-          <DropZone onFile={handleFile} />
         )}
       </section>
     </main>
-  )
-}
-
-type Result = {
-  label: string
-  url: string
-  size: number
-  seconds: number
-  dimensions?: string
-}
-
-// Temporary: stands in for the convert and result screen (step 5) so the
-// selected part of the video can still be converted.
-function TemporaryConvert({
-  file,
-  clip,
-  quality,
-  label,
-  onBusyChange,
-}: {
-  file: File
-  clip: Clip
-  quality: Quality
-  /** The preset's name, shown next to the result. */
-  label: string
-  onBusyChange: (busy: boolean) => void
-}) {
-  const [progress, setProgress] = useState<ConvertProgress>()
-  const [result, setResult] = useState<Result>()
-  const [error, setError] = useState<string>()
-  const busy = progress !== undefined
-
-  // Free each GIF's memory once it's replaced or this panel goes away.
-  const resultUrl = result?.url
-  useEffect(() => {
-    return () => {
-      if (resultUrl) URL.revokeObjectURL(resultUrl)
-    }
-  }, [resultUrl])
-
-  async function handleConvert() {
-    setResult(undefined)
-    setError(undefined)
-    onBusyChange(true)
-    const startedAt = performance.now()
-    try {
-      const gif = await convert(file, { ...clip, ...quality }, setProgress)
-      setResult({
-        label,
-        url: URL.createObjectURL(gif),
-        size: gif.size,
-        seconds: (performance.now() - startedAt) / 1000,
-      })
-    } catch (e) {
-      console.error(e)
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setProgress(undefined)
-      onBusyChange(false)
-    }
-  }
-
-  return (
-    <div className="mt-6 w-full max-w-xl rounded-lg border border-zinc-200 p-4 text-left text-sm dark:border-zinc-800">
-      <button
-        className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-        disabled={busy}
-        onClick={handleConvert}
-      >
-        Convert to GIF
-      </button>
-      {progress && (
-        <p className="mt-3 font-mono text-xs">
-          {progress.stage === 'encoding'
-            ? `encoding ${Math.round(progress.ratio * 100)}%`
-            : `${progress.stage}…`}
-        </p>
-      )}
-      {error && (
-        <pre className="mt-3 overflow-x-auto font-mono text-xs whitespace-pre-wrap text-red-600">
-          {error}
-        </pre>
-      )}
-      {result && (
-        <div className="mt-3">
-          <img
-            className="mx-auto block max-w-full rounded-lg"
-            src={result.url}
-            alt="Converted GIF"
-            onLoad={(e) => {
-              const { naturalWidth, naturalHeight } = e.currentTarget
-              const dimensions = `${naturalWidth}×${naturalHeight}`
-              setResult((r) => r && { ...r, dimensions })
-            }}
-          />
-          <p className="mt-2 font-mono text-xs text-zinc-500">
-            {result.label} · {result.dimensions} · {formatSize(result.size)} ·
-            took {result.seconds.toFixed(1)}s ·{' '}
-            <a className="underline" href={result.url} download="gify.gif">
-              download
-            </a>
-          </p>
-        </div>
-      )}
-    </div>
   )
 }
 
