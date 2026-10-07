@@ -1,7 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { DropZone } from './components/DropZone'
 import { convert, type ConvertProgress } from './lib/convert'
+import { formatSize } from './lib/format'
 
 function App() {
+  const [file, setFile] = useState<File>()
+
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-6">
       <header className="flex items-center justify-between">
@@ -16,7 +20,11 @@ function App() {
         <p className="mt-4 max-w-md text-zinc-600 dark:text-zinc-400">
           Turn a short video into a GIF, right here.
         </p>
-        <EngineTest />
+        {file ? (
+          <TemporaryConvert file={file} onReset={() => setFile(undefined)} />
+        ) : (
+          <DropZone onFile={setFile} />
+        )}
       </section>
     </main>
   )
@@ -37,19 +45,30 @@ type Result = {
   dimensions?: string
 }
 
-// Temporary: a bare-bones panel to check the conversion engine works before
-// the real UI is built. Converts the first 5 seconds with the chosen preset.
-function EngineTest() {
-  const [file, setFile] = useState<File>()
+// Temporary: stands in for the editor, settings and result screens (steps
+// 3 to 5) so a chosen video can still be converted. Uses the first 5 seconds.
+function TemporaryConvert({
+  file,
+  onReset,
+}: {
+  file: File
+  onReset: () => void
+}) {
   const [preset, setPreset] = useState<Preset>('Balanced')
   const [progress, setProgress] = useState<ConvertProgress>()
   const [result, setResult] = useState<Result>()
   const [error, setError] = useState<string>()
   const busy = progress !== undefined
 
+  // Free each GIF's memory once it's replaced or this panel goes away.
+  const resultUrl = result?.url
+  useEffect(() => {
+    return () => {
+      if (resultUrl) URL.revokeObjectURL(resultUrl)
+    }
+  }, [resultUrl])
+
   async function handleConvert() {
-    if (!file) return
-    if (result) URL.revokeObjectURL(result.url)
     setResult(undefined)
     setError(undefined)
     const startedAt = performance.now()
@@ -74,16 +93,19 @@ function EngineTest() {
   }
 
   return (
-    <div className="mt-12 w-full max-w-md rounded-lg border border-dashed border-zinc-300 p-4 text-left text-sm dark:border-zinc-700">
-      <p className="font-mono text-xs text-zinc-500">Engine test</p>
-      <input
-        className="mt-3 block w-full text-sm"
-        type="file"
-        accept="video/mp4,video/quicktime,video/webm"
-        disabled={busy}
-        onChange={(e) => setFile(e.target.files?.[0])}
-      />
-      <div className="mt-3 flex gap-2">
+    <div className="mt-10 w-full max-w-md rounded-lg border border-zinc-200 p-4 text-left text-sm dark:border-zinc-800">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="min-w-0 truncate font-medium">{file.name}</p>
+        <button
+          className="shrink-0 text-xs text-zinc-500 underline-offset-4 hover:underline disabled:opacity-50"
+          disabled={busy}
+          onClick={onReset}
+        >
+          Choose another
+        </button>
+      </div>
+      <p className="font-mono text-xs text-zinc-500">{formatSize(file.size)}</p>
+      <div className="mt-4 flex gap-2">
         {(Object.keys(PRESETS) as Preset[]).map((name) => (
           <button
             key={name}
@@ -101,7 +123,7 @@ function EngineTest() {
       </div>
       <button
         className="mt-3 inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-        disabled={!file || busy}
+        disabled={busy}
         onClick={handleConvert}
       >
         Convert first 5 seconds
@@ -131,9 +153,8 @@ function EngineTest() {
             }}
           />
           <p className="mt-2 font-mono text-xs text-zinc-500">
-            {result.preset} · {result.dimensions} ·{' '}
-            {(result.size / 1024 / 1024).toFixed(2)} MB · took{' '}
-            {result.seconds.toFixed(1)}s ·{' '}
+            {result.preset} · {result.dimensions} · {formatSize(result.size)} ·
+            took {result.seconds.toFixed(1)}s ·{' '}
             <a className="underline" href={result.url} download="gify.gif">
               download
             </a>

@@ -9,3 +9,12 @@
   /* Swap this to change the accent colour everywhere. */
   --color-accent: var(--color-violet-500);
 }
+
+@layer base {
+  /* Tailwind v4 gives buttons the default arrow cursor. Disabled buttons
+     keep it, so they don't look clickable. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
