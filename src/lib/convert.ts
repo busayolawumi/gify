@@ -2,6 +2,7 @@ import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile } from '@ffmpeg/util'
 import coreURL from '@ffmpeg/core?url'
 import wasmURL from '@ffmpeg/core/wasm?url'
+import type { Crop } from './crop'
 
 export type ConvertOptions = {
   /** Where the clip starts, in seconds. */
@@ -14,6 +15,8 @@ export type ConvertOptions = {
    */
   size: number
   fps: number
+  /** The part of the picture to keep, in video pixels. Omit to keep it all. */
+  crop?: Crop
 }
 
 export type ConvertProgress =
@@ -221,7 +224,7 @@ export async function convert(
   const stop = () => resetEngine(ffmpeg)
   signal?.addEventListener('abort', stop, { once: true })
 
-  const { start, end, size, fps } = options
+  const { start, end, size, fps, crop } = options
   const duration = end - start
   // -ss before -i seeks quickly and makes the clip's timestamps start at 0.
   const input = [
@@ -232,8 +235,13 @@ export async function convert(
     '-i',
     INPUT,
   ]
-  // Fit inside a size×size box, keeping the aspect ratio.
-  const filters = `fps=${fps},scale='min(${size},iw)':'min(${size},ih)':force_original_aspect_ratio=decrease:flags=lanczos`
+  // Crop first (FFmpeg has already turned phone videos upright, so the crop's
+  // coordinates match the preview's), then fit inside a size×size box,
+  // keeping the aspect ratio.
+  const cropFilter = crop
+    ? `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y},`
+    : ''
+  const filters = `${cropFilter}fps=${fps},scale='min(${size},iw)':'min(${size},ih)':force_original_aspect_ratio=decrease:flags=lanczos`
   // -map_metadata -1 drops everything copied from the video, such as the
   // phone model and the GPS location, so a GIF can never carry them.
   const output = ['-map_metadata', '-1', '-loop', '0', OUTPUT]

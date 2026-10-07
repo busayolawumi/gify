@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ConvertPanel } from './components/ConvertPanel'
+import { initialCrop, type Crop, type CropShape } from './lib/crop'
 import { DropZone } from './components/DropZone'
 import { Editor } from './components/Editor'
 import { Result, type GifResult } from './components/Result'
@@ -25,6 +26,9 @@ function App() {
   const [video, setVideo] = useState<{ file: File; url: string }>()
   const [clip, setClip] = useState<Clip>()
   const [dimensions, setDimensions] = useState<Dimensions>()
+  // The shape stays chosen between videos. The crop itself is per video.
+  const [cropShape, setCropShape] = useState<CropShape>('Original')
+  const [crop, setCrop] = useState<Crop>()
   const [settings, setSettings] = useState(loadSettings)
   // Set while a GIF is being made.
   const [progress, setProgress] = useState<ConvertProgress>()
@@ -34,12 +38,26 @@ function App() {
   const busy = progress !== undefined
   const file = video?.file
   const screen = !video ? 'pick' : gif ? 'result' : 'edit'
+  // What actually goes into the GIF: the crop if there is one, otherwise the
+  // whole picture. Sizes are worked out from this.
+  const source = crop ?? dimensions
 
   const handleFile = useCallback((chosen: File) => {
     setVideo({ file: chosen, url: URL.createObjectURL(chosen) })
     // Download the engine while the user picks the part they want.
     preloadEngine()
   }, [])
+
+  function handleDimensions(next: Dimensions) {
+    setDimensions(next)
+    // Coming back with "Edit again" keeps the crop the user made.
+    setCrop((current) => current ?? initialCrop(cropShape, next))
+  }
+
+  function handleCropShape(shape: CropShape) {
+    setCropShape(shape)
+    setCrop(dimensions && initialCrop(shape, dimensions, crop))
+  }
 
   function handleSettings(next: SettingsValue) {
     setSettings(next)
@@ -55,7 +73,7 @@ function App() {
     try {
       const blob = await convert(
         video.file,
-        { ...clip, ...qualityOf(settings, dimensions) },
+        { ...clip, ...qualityOf(settings, source), crop },
         setProgress,
         controller.signal,
       )
@@ -89,6 +107,7 @@ function App() {
     setVideo(undefined)
     setClip(undefined)
     setDimensions(undefined)
+    setCrop(undefined)
     setError(undefined)
   }
 
@@ -155,14 +174,19 @@ function App() {
               url={video.url}
               clip={clip}
               onClipChange={setClip}
-              onDimensions={setDimensions}
+              onDimensions={handleDimensions}
+              videoSize={dimensions}
+              cropShape={cropShape}
+              crop={crop}
+              onCropShapeChange={handleCropShape}
+              onCropChange={setCrop}
               onReset={handleStartOver}
               locked={busy}
             />
             <Settings
               settings={settings}
               onChange={handleSettings}
-              video={dimensions}
+              video={source}
               disabled={busy}
             />
             <ConvertPanel

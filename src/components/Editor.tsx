@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { getDuration } from '../lib/convert'
+import { CROP_SHAPES, aspectOf, type Crop, type CropShape } from '../lib/crop'
 import { formatSize, formatTime } from '../lib/format'
 import type { Dimensions } from '../lib/settings'
 import { captureFrames } from '../lib/thumbnails'
 import { defaultClip, type Clip } from '../lib/video'
+import { CropBox } from './CropBox'
 import { Timeline } from './Timeline'
 
 // The preview never seeks or loops closer than this to the very end. The last
@@ -23,6 +25,12 @@ type Props = {
   onClipChange: (clip: Clip) => void
   /** Called with the video's size once the browser has opened it. */
   onDimensions?: (dimensions: Dimensions) => void
+  /** The video's size, once known. Cropping needs it. */
+  videoSize?: Dimensions
+  cropShape: CropShape
+  crop: Crop | undefined
+  onCropShapeChange: (shape: CropShape) => void
+  onCropChange: (crop: Crop) => void
   onReset: () => void
   /** Stops the video being swapped while a GIF is being made. */
   locked?: boolean
@@ -34,6 +42,11 @@ export function Editor({
   clip,
   onClipChange,
   onDimensions,
+  videoSize,
+  cropShape,
+  crop,
+  onCropShapeChange,
+  onCropChange,
   onReset,
   locked,
 }: Props) {
@@ -189,26 +202,63 @@ export function Editor({
         </button>
       </div>
       {preview !== 'none' && (
-        <video
-          ref={video}
-          src={url}
-          className="h-[min(60vh,28rem)] w-full rounded-lg bg-zinc-100 object-contain dark:bg-zinc-900"
-          autoPlay
-          muted
-          playsInline
-          preload="auto"
-          onLoadedMetadata={(e) => handleMetadata(e.currentTarget)}
-          onError={handleError}
-          onSeeked={(e) => handleSeeked(e.currentTarget)}
-          // A backstop for the loop above: if the video reaches its end and
-          // stops by itself, start the clip again. Not while dragging,
-          // though, or the preview would jump back to the start mid-drag.
-          onEnded={(e) => {
-            if (scrubbing.current) return
-            e.currentTarget.currentTime = latestClip.current?.start ?? 0
-            e.currentTarget.play().catch(() => {})
-          }}
-        />
+        // The crop box sits on top of the video, in a frame the same size.
+        <div className="relative">
+          <video
+            ref={video}
+            src={url}
+            className="h-[min(60vh,28rem)] w-full rounded-lg bg-zinc-100 object-contain dark:bg-zinc-900"
+            autoPlay
+            muted
+            playsInline
+            preload="auto"
+            onLoadedMetadata={(e) => handleMetadata(e.currentTarget)}
+            onError={handleError}
+            onSeeked={(e) => handleSeeked(e.currentTarget)}
+            // A backstop for the loop above: if the video reaches its end and
+            // stops by itself, start the clip again. Not while dragging,
+            // though, or the preview would jump back to the start mid-drag.
+            onEnded={(e) => {
+              if (scrubbing.current) return
+              e.currentTarget.currentTime = latestClip.current?.start ?? 0
+              e.currentTarget.play().catch(() => {})
+            }}
+          />
+          {crop && videoSize && (
+            <CropBox
+              video={videoSize}
+              crop={crop}
+              aspect={aspectOf(cropShape)}
+              onChange={onCropChange}
+              disabled={locked}
+            />
+          )}
+        </div>
+      )}
+      {preview === 'ready' && videoSize && (
+        <div className="mt-3 flex flex-wrap items-center gap-1">
+          <span className="mr-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Crop
+          </span>
+          {CROP_SHAPES.map((shape) => (
+            <button
+              key={shape}
+              type="button"
+              aria-pressed={shape === cropShape}
+              // Choosing a shape, even the current one, gives the biggest
+              // box of that shape, centred where the last one was.
+              className={`rounded-md px-2.5 py-1.5 text-xs transition disabled:opacity-50 ${
+                shape === cropShape
+                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+                  : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+              }`}
+              disabled={locked}
+              onClick={() => onCropShapeChange(shape)}
+            >
+              {shape}
+            </button>
+          ))}
+        </div>
       )}
       {preview === 'none' && (
         <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-zinc-300 px-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
