@@ -84,7 +84,7 @@ export function DropZone({ onFile }: Props) {
           </span>
           <span className="hidden pointer-coarse:inline">Choose a video</span>
         </span>
-        <span className="font-mono text-xs text-zinc-500">
+        <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
           MP4 · MOV · WebM · up to {formatSize(MAX_FILE_SIZE)}
         </span>
       </button>
@@ -104,7 +104,7 @@ export function DropZone({ onFile }: Props) {
           {error}
         </p>
       )}
-      <p className="mt-6 text-xs text-zinc-500">
+      <p className="mt-6 text-xs text-zinc-500 dark:text-zinc-400">
         Your video never leaves your device.
       </p>
     </div>

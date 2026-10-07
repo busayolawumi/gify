@@ -1,18 +1,36 @@
-import type { ConvertProgress } from '../lib/convert'
+import type { ConvertErrorKind, ConvertProgress } from '../lib/convert'
 
 type Props = {
   /** Set while a GIF is being made. */
   progress?: ConvertProgress
-  error?: string
+  /** Set when the last attempt failed. */
+  error?: ConvertErrorKind
   disabled?: boolean
   onConvert: () => void
   onCancel: () => void
 }
 
-const LABELS: Record<ConvertProgress['stage'], string> = {
-  loading: 'Getting ready…',
-  analysing: 'Reading colours…',
-  encoding: 'Making your GIF…',
+const ERRORS: Record<ConvertErrorKind, string> = {
+  network:
+    "Gify couldn't download its converter. Check your connection and try again.",
+  memory:
+    'Your device ran out of memory making this GIF. Try a smaller size, or a shorter clip.',
+  unreadable:
+    "Gify couldn't read this video. It may be damaged, or in a format Gify can't handle yet.",
+  unknown:
+    'Something went wrong making your GIF. Try again, or try a smaller size or a shorter clip.',
+}
+
+// The engine only downloads on a first visit. After that it's cached.
+const downloading = (
+  p: ConvertProgress,
+): p is { stage: 'loading'; ratio: number } =>
+  p.stage === 'loading' && p.ratio !== undefined && p.ratio < 1
+
+function label(p: ConvertProgress) {
+  if (p.stage === 'encoding') return 'Making your GIF…'
+  if (p.stage === 'analysing') return 'Reading colours…'
+  return downloading(p) ? 'Downloading the converter…' : 'Getting ready…'
 }
 
 export function ConvertPanel({
@@ -23,17 +41,19 @@ export function ConvertPanel({
   onCancel,
 }: Props) {
   if (progress) {
-    // Only encoding has a real percentage. The other stages pulse instead.
-    const percent =
-      progress.stage === 'encoding'
-        ? Math.round(progress.ratio * 100)
-        : undefined
+    // Downloading and encoding have real percentages. The rest pulse instead.
+    let ratio: number | undefined
+    if (progress.stage === 'encoding') ratio = progress.ratio
+    else if (downloading(progress)) ratio = progress.ratio
+    const percent = ratio === undefined ? undefined : Math.round(ratio * 100)
     return (
       <div className="mt-6 w-full max-w-xl text-left">
         <div className="flex items-baseline justify-between text-sm">
-          <p>{LABELS[progress.stage]}</p>
+          <p>{label(progress)}</p>
           {percent !== undefined && (
-            <p className="font-mono text-xs text-zinc-500">{percent}%</p>
+            <p className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
+              {percent}%
+            </p>
           )}
         </div>
         <div
@@ -53,10 +73,13 @@ export function ConvertPanel({
             />
           )}
         </div>
-        <div className="mt-2 text-right">
+        <div className="mt-2 flex items-baseline justify-between gap-3">
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            {downloading(progress) && 'Only needed the first time.'}
+          </p>
           <button
             type="button"
-            className="text-xs text-zinc-500 underline-offset-4 hover:underline"
+            className="-mx-2 -my-3.5 px-2 py-3.5 text-xs text-zinc-500 underline-offset-4 hover:underline dark:text-zinc-400"
             onClick={onCancel}
           >
             Cancel
@@ -70,7 +93,7 @@ export function ConvertPanel({
     <div className="mt-6 w-full max-w-xl text-left">
       {error && (
         <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">
-          {error}
+          {ERRORS[error]}
         </p>
       )}
       <button

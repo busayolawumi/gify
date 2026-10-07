@@ -4,7 +4,13 @@ import { DropZone } from './components/DropZone'
 import { Editor } from './components/Editor'
 import { Result, type GifResult } from './components/Result'
 import { Settings } from './components/Settings'
-import { convert, preloadEngine, type ConvertProgress } from './lib/convert'
+import {
+  convert,
+  ConvertError,
+  preloadEngine,
+  type ConvertErrorKind,
+  type ConvertProgress,
+} from './lib/convert'
 import {
   loadSettings,
   qualityOf,
@@ -22,11 +28,12 @@ function App() {
   const [settings, setSettings] = useState(loadSettings)
   // Set while a GIF is being made.
   const [progress, setProgress] = useState<ConvertProgress>()
-  const [error, setError] = useState<string>()
+  const [error, setError] = useState<ConvertErrorKind>()
   const [gif, setGif] = useState<GifResult>()
   const cancel = useRef<AbortController | undefined>(undefined)
   const busy = progress !== undefined
   const file = video?.file
+  const screen = !video ? 'pick' : gif ? 'result' : 'edit'
 
   const handleFile = useCallback((chosen: File) => {
     setVideo({ file: chosen, url: URL.createObjectURL(chosen) })
@@ -61,9 +68,7 @@ function App() {
     } catch (e) {
       if (!controller.signal.aborted) {
         console.error(e)
-        setError(
-          'Something went wrong making your GIF. Try again, or try a smaller size or a shorter clip.',
-        )
+        setError(e instanceof ConvertError ? e.kind : 'unknown')
       }
     } finally {
       cancel.current = undefined
@@ -86,6 +91,12 @@ function App() {
     setDimensions(undefined)
     setError(undefined)
   }
+
+  // Each screen starts at the top. Otherwise, on a phone, the result would
+  // open scrolled down to where the Convert button was.
+  useEffect(() => {
+    window.scrollTo({ top: 0 })
+  }, [screen])
 
   // Once a video is open, ignore files dropped on the page instead of letting
   // the browser leave Gify to open them.
@@ -110,13 +121,25 @@ function App() {
           Gify<span className="text-accent">.</span>
         </a>
       </header>
-      <section className="flex flex-1 flex-col items-center justify-center py-20 text-center">
-        <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">
+      {/* Once a video is open, the headline shrinks so the preview isn't
+          pushed down the screen on phones. */}
+      <section
+        className={`flex flex-1 flex-col items-center text-center ${
+          video ? 'py-6 sm:py-10' : 'justify-center py-12 sm:py-20'
+        }`}
+      >
+        <h1
+          className={`font-semibold tracking-tight ${
+            video ? 'text-2xl sm:text-3xl' : 'text-4xl sm:text-6xl'
+          }`}
+        >
           Videos, GIF’d.
         </h1>
-        <p className="mt-4 max-w-md text-zinc-600 dark:text-zinc-400">
-          Pick the best part of any video and make it loop.
-        </p>
+        {!video && (
+          <p className="mt-4 max-w-md text-zinc-600 dark:text-zinc-400">
+            Pick the best part of any video and make it loop.
+          </p>
+        )}
         {!video ? (
           <DropZone onFile={handleFile} />
         ) : gif ? (

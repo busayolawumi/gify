@@ -7,6 +7,9 @@ type Handle = 'start' | 'end'
 type Props = {
   duration: number
   clip: Clip
+  /** Frames from across the video, filled in as they're ready. */
+  thumbnails?: (string | undefined)[]
+  thumbnailCount?: number
   onChange: (clip: Clip) => void
   /**
    * Called with a handle's time while it's being dragged, then with
@@ -18,7 +21,14 @@ type Props = {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
 
-export function Timeline({ duration, clip, onChange, onScrub }: Props) {
+export function Timeline({
+  duration,
+  clip,
+  thumbnails = [],
+  thumbnailCount = 0,
+  onChange,
+  onScrub,
+}: Props) {
   const track = useRef<HTMLDivElement>(null)
   // A video shorter than the minimum can only be used whole.
   const minLength = Math.min(MIN_CLIP_LENGTH, duration)
@@ -71,10 +81,35 @@ export function Timeline({ duration, clip, onChange, onScrub }: Props) {
   return (
     <div
       ref={track}
-      className="relative h-10 rounded-lg bg-zinc-100 dark:bg-zinc-900"
+      className="relative h-12 rounded-lg bg-zinc-100 dark:bg-zinc-900"
     >
+      {/* Slots are laid out up front, so each frame appears in its place. */}
+      <div className="absolute inset-0 flex overflow-hidden rounded-lg">
+        {Array.from({ length: thumbnailCount }, (_, i) =>
+          thumbnails[i] ? (
+            <img
+              key={i}
+              src={thumbnails[i]}
+              alt=""
+              draggable={false}
+              className="h-full min-w-0 flex-1 object-cover"
+            />
+          ) : (
+            <div key={i} className="flex-1" />
+          ),
+        )}
+      </div>
+      {/* Fade what's outside the selection. */}
       <div
-        className="absolute inset-y-0 border-y-2 border-accent bg-accent/15"
+        className="absolute inset-y-0 left-0 rounded-l-lg bg-white/70 dark:bg-zinc-950/70"
+        style={{ width: `${percent(clip.start)}%` }}
+      />
+      <div
+        className="absolute inset-y-0 right-0 rounded-r-lg bg-white/70 dark:bg-zinc-950/70"
+        style={{ width: `${100 - percent(clip.end)}%` }}
+      />
+      <div
+        className="absolute inset-y-0 border-y-2 border-accent"
         style={{
           left: `${percent(clip.start)}%`,
           right: `${100 - percent(clip.end)}%`,
@@ -94,7 +129,7 @@ export function Timeline({ duration, clip, onChange, onScrub }: Props) {
           aria-valuetext={formatTime(clip[handle])}
           // A wide, invisible hit area around a thin bar, so it's easy to grab
           // with a finger.
-          className="group absolute inset-y-0 w-6 -translate-x-1/2 cursor-ew-resize touch-none focus-visible:outline-none"
+          className="group absolute inset-y-0 w-8 -translate-x-1/2 cursor-ew-resize touch-none focus-visible:outline-none"
           style={{ left: `${percent(clip[handle])}%` }}
           onPointerDown={(e) => handlePointerDown(handle, e)}
           onPointerMove={(e) => handlePointerMove(handle, e)}

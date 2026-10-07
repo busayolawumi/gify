@@ -17,9 +17,34 @@ export type ConvertOptions = {
 }
 
 export type ConvertProgress =
-  | { stage: 'loading' }
+  // `ratio` is set while the engine is still downloading (first visit).
+  | { stage: 'loading'; ratio?: number }
   | { stage: 'analysing' }
   | { stage: 'encoding'; ratio: number }
+
+/** Why a conversion failed, so the UI can say something useful. */
+export type ConvertErrorKind = 'network' | 'memory' | 'unreadable' | 'unknown'
+
+export class ConvertError extends Error {
+  kind: ConvertErrorKind
+  constructor(kind: ConvertErrorKind, cause: unknown) {
+    super(`Couldn't make the GIF (${kind})`, { cause })
+    this.kind = kind
+  }
+}
+
+// Matched against error messages and FFmpeg's last log lines.
+const MEMORY_ERRORS =
+  /out of memory|\bOOM\b|Cannot enlarge memory|memory access out of bounds|Array buffer allocation failed|could not allocate memory/i
+const UNREADABLE_ERRORS =
+  /Invalid data found|could not find codec parameters|Decoder .{0,40}not found|moov atom not found|does not contain any stream|matches no streams|Error while decoding/i
+
+function kindOf(error: unknown, fallback: ConvertErrorKind): ConvertErrorKind {
+  const text = error instanceof Error ? error.message : String(error)
+  if (MEMORY_ERRORS.test(text)) return 'memory'
+  if (UNREADABLE_ERRORS.test(text)) return 'unreadable'
+  return fallback
+}
 
 const INPUT = 'input'
 const PALETTE = 'palette.png'
@@ -30,10 +55,36 @@ const PROBE_OUTPUT = 'probe.txt'
 
 let engine: Promise<FFmpeg> | undefined
 let engineReady = false
+// How much of the engine has downloaded (0–1), and who wants to know.
+let downloaded = 0
+const downloadListeners = new Set<(ratio: number) => void>()
+
+/** Downloads a file, reporting progress against its known size. */
+async function download(
+  url: string,
+  size: number,
+  onProgress: (ratio: number) => void,
+): Promise<Blob> {
+  const response = await fetch(url)
+  if (!response.ok || !response.body) {
+    throw new Error(`Download failed (${response.status}): ${url}`)
+  }
+  const reader = response.body.getReader()
+  const chunks: Uint8Array<ArrayBuffer>[] = []
+  let received = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    received += value.byteLength
+    onProgress(Math.min(received / size, 1))
+  }
+  return new Blob(chunks, { type: 'application/wasm' })
+}
 
 // The core is ~32MB, so it's only downloaded once a video has been chosen.
-// It's the single-threaded core on purpose: the multi-threaded one deadlocks on iPhone
-// (HEVC) videos, so conversions would hang forever. See CLAUDE.md.
+// It's the single-threaded core on purpose: the multi-threaded one deadlocks
+// on iPhone (HEVC) videos, so conversions would hang forever. See CLAUDE.md.
 function loadEngine() {
   if (!engine) {
     engine = (async () => {
@@ -42,14 +93,43 @@ function loadEngine() {
         // FFmpeg's own output, under "Verbose" in the browser console.
         ffmpeg.on('log', ({ message }) => console.debug('[ffmpeg]', message))
       }
-      await ffmpeg.load({ coreURL, wasmURL })
+      // Download the engine ourselves to show progress, then hand it to
+      // FFmpeg as a blob URL. After the first visit it comes from the cache.
+      let lastPercent = -1
+      const wasm = await download(wasmURL, __ENGINE_WASM_SIZE__, (ratio) => {
+        downloaded = ratio
+        const percent = Math.floor(ratio * 100)
+        if (percent === lastPercent) return
+        lastPercent = percent
+        downloadListeners.forEach((listener) => listener(ratio))
+      })
+      const wasmBlobURL = URL.createObjectURL(wasm)
+      try {
+        await ffmpeg.load({ coreURL, wasmURL: wasmBlobURL })
+      } finally {
+        URL.revokeObjectURL(wasmBlobURL)
+      }
       engineReady = true
       return ffmpeg
     })()
     // Let the next conversion try again if this load failed.
-    engine.catch(() => (engine = undefined))
+    engine.catch(() => {
+      engine = undefined
+      downloaded = 0
+    })
   }
   return engine
+}
+
+// Shuts the engine down and starts loading a fresh one. Needed after a
+// cancel, because FFmpeg can't be stopped mid-run, and after a crash, which
+// can leave it unusable.
+function resetEngine(ffmpeg: FFmpeg) {
+  ffmpeg.terminate()
+  engine = undefined
+  engineReady = false
+  downloaded = 0
+  preloadEngine()
 }
 
 /** Starts downloading the engine early, so it's ready by the time it's needed. */
@@ -107,7 +187,8 @@ async function run(ffmpeg: FFmpeg, args: string[]) {
 
 /**
  * Makes a GIF from part of a video. Aborting `signal` cancels it, and the
- * promise then rejects with the signal's reason.
+ * promise then rejects with the signal's reason. Other failures reject with
+ * a ConvertError that says what kind of problem it was.
  */
 export async function convert(
   file: File,
@@ -116,18 +197,28 @@ export async function convert(
   signal?: AbortSignal,
 ): Promise<Blob> {
   signal?.throwIfAborted()
-  if (!engineReady) onProgress?.({ stage: 'loading' })
-  const ffmpeg = await loadEngine()
-  signal?.throwIfAborted()
-
-  // FFmpeg can't be interrupted mid-run, so cancelling shuts the engine down.
-  // A fresh one starts loading straight away, ready for another try.
-  function stop() {
-    ffmpeg.terminate()
-    engine = undefined
-    engineReady = false
-    preloadEngine()
+  // On a first visit the engine may still be downloading, so pass on its
+  // progress while waiting for it.
+  const reportDownload = (ratio: number) =>
+    onProgress?.({ stage: 'loading', ratio })
+  if (!engineReady) {
+    reportDownload(downloaded)
+    downloadListeners.add(reportDownload)
   }
+  let ffmpeg: FFmpeg
+  try {
+    ffmpeg = await loadEngine()
+  } catch (e) {
+    console.error(e)
+    throw new ConvertError(kindOf(e, 'network'), e)
+  } finally {
+    downloadListeners.delete(reportDownload)
+  }
+  signal?.throwIfAborted()
+  // Downloaded. Now copying the video in, which takes a moment for big files.
+  onProgress?.({ stage: 'loading' })
+
+  const stop = () => resetEngine(ffmpeg)
   signal?.addEventListener('abort', stop, { once: true })
 
   const { start, end, size, fps } = options
@@ -188,13 +279,17 @@ export async function convert(
     // Shutting the engine down makes its unfinished work fail. Report that as
     // the cancel it really was.
     if (signal?.aborted) throw signal.reason
-    throw e
+    const kind = kindOf(e, 'unknown')
+    // FFmpeg turning a video down is a normal exit, and the engine is fine.
+    // Anything else may have broken it, so start a fresh one.
+    if (kind !== 'unreadable') resetEngine(ffmpeg)
+    throw new ConvertError(kind, e)
   } finally {
     signal?.removeEventListener('abort', stop)
     ffmpeg.off('progress', reportEncoding)
-    // Free the memory these take up inside ffmpeg.wasm. After a cancel the
-    // whole engine is gone, so there's nothing to free.
-    if (!signal?.aborted) {
+    // Free the memory these take up inside ffmpeg.wasm. If the engine was shut
+    // down (cancel or crash), it's all gone already.
+    if (ffmpeg.loaded) {
       await Promise.allSettled(
         [INPUT, PALETTE, OUTPUT].map((path) => ffmpeg.deleteFile(path)),
       )

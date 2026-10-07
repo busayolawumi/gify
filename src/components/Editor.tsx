@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getDuration } from '../lib/convert'
 import { formatSize, formatTime } from '../lib/format'
 import type { Dimensions } from '../lib/settings'
+import { captureFrames } from '../lib/thumbnails'
 import { defaultClip, type Clip } from '../lib/video'
 import { Timeline } from './Timeline'
 
@@ -9,6 +10,10 @@ import { Timeline } from './Timeline'
 // frame often starts a little before the reported length, and seeking to the
 // exact end can show a blank frame and makes the browser fire `ended`.
 const END_MARGIN = 0.05
+// Frames in the timeline's thumbnail strip, and their height in pixels. 96px
+// stays sharp on high-density screens at the strip's 48px height.
+const THUMBNAIL_COUNT = 10
+const THUMBNAIL_HEIGHT = 96
 
 type Props = {
   file: File
@@ -39,6 +44,7 @@ export function Editor({
     'loading',
   )
   const [unreadable, setUnreadable] = useState(false)
+  const [thumbnails, setThumbnails] = useState<(string | undefined)[]>([])
   const scrubbing = useRef(false)
   // Where to seek next once the seek in progress finishes (see handleScrub).
   const nextSeek = useRef<number | undefined>(undefined)
@@ -49,6 +55,28 @@ export function Editor({
   useEffect(() => {
     latestClip.current = clip
   }, [clip])
+
+  // Fills the timeline with frames from the video, one by one. If the browser
+  // won't cooperate, the timeline just stays plain.
+  useEffect(() => {
+    if (preview !== 'ready' || duration === undefined) return
+    const controller = new AbortController()
+    const frames: (string | undefined)[] = []
+    captureFrames(
+      url,
+      duration,
+      THUMBNAIL_COUNT,
+      THUMBNAIL_HEIGHT,
+      (index, src) => {
+        frames[index] = src
+        setThumbnails([...frames])
+      },
+      controller.signal,
+    ).catch((e) => {
+      if (!controller.signal.aborted) console.warn('No thumbnails:', e)
+    })
+    return () => controller.abort()
+  }, [url, duration, preview])
 
   // Keeps the preview looping inside the selected part.
   useEffect(() => {
@@ -143,17 +171,17 @@ export function Editor({
   }
 
   return (
-    <div className="mt-10 w-full max-w-xl text-left">
+    <div className="mt-6 w-full max-w-xl text-left sm:mt-8">
       <div className="mb-3 flex items-baseline justify-between gap-3 text-sm">
         <p className="min-w-0 truncate">
           <span className="font-medium">{file.name}</span>{' '}
-          <span className="font-mono text-xs text-zinc-500">
+          <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
             · {formatSize(file.size)}
           </span>
         </p>
         <button
           type="button"
-          className="shrink-0 text-xs text-zinc-500 underline-offset-4 hover:underline disabled:opacity-50"
+          className="-mx-2 -my-3.5 shrink-0 px-2 py-3.5 text-xs text-zinc-500 underline-offset-4 hover:underline disabled:opacity-50 dark:text-zinc-400"
           disabled={locked}
           onClick={onReset}
         >
@@ -183,7 +211,7 @@ export function Editor({
         />
       )}
       {preview === 'none' && (
-        <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-zinc-300 px-6 text-center text-sm text-zinc-500 dark:border-zinc-700">
+        <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-zinc-300 px-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
           {unreadable
             ? "Gify couldn't read this video. Try another one."
             : "Preview isn't available in this browser, but you can still pick the part you want."}
@@ -195,17 +223,19 @@ export function Editor({
           <Timeline
             duration={duration}
             clip={clip}
+            thumbnails={thumbnails}
+            thumbnailCount={THUMBNAIL_COUNT}
             onChange={onClipChange}
             onScrub={handleScrub}
           />
-          <p className="mt-2 font-mono text-xs text-zinc-500">
+          <p className="mt-2 font-mono text-xs text-zinc-500 dark:text-zinc-400">
             {formatTime(clip.start)} → {formatTime(clip.end)} ·{' '}
             {(clip.end - clip.start).toFixed(1)}s of {formatTime(duration)}
           </p>
         </div>
       )}
       {duration === undefined && preview === 'none' && !unreadable && (
-        <p className="mt-4 font-mono text-xs text-zinc-500">
+        <p className="mt-4 font-mono text-xs text-zinc-500 dark:text-zinc-400">
           Reading the video…
         </p>
       )}

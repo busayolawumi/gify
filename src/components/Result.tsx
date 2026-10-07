@@ -43,7 +43,7 @@ export function Result({ gif, onEditAgain, onMakeAnother }: Props) {
   }
 
   return (
-    <div className="mt-10 w-full max-w-xl">
+    <div className="mt-6 w-full max-w-xl sm:mt-8">
       <img
         className="mx-auto block max-h-[min(60vh,28rem)] max-w-full rounded-lg"
         src={gif.url}
@@ -53,7 +53,7 @@ export function Result({ gif, onEditAgain, onMakeAnother }: Props) {
           setDimensions(`${naturalWidth}×${naturalHeight}`)
         }}
       />
-      <p className="mt-3 font-mono text-xs text-zinc-500">
+      <p className="mt-3 font-mono text-xs text-zinc-500 dark:text-zinc-400">
         {dimensions && `${dimensions} · `}
         {gif.length.toFixed(1)}s · {formatSize(gif.blob.size)}
       </p>
@@ -83,10 +83,10 @@ export function Result({ gif, onEditAgain, onMakeAnother }: Props) {
         )}
       </div>
 
-      <p className="mt-4 text-xs text-zinc-500">
+      <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
         <button
           type="button"
-          className="underline-offset-4 hover:underline"
+          className="-mx-2 -my-3.5 px-2 py-3.5 underline-offset-4 hover:underline"
           onClick={onEditAgain}
         >
           Edit again
@@ -94,7 +94,7 @@ export function Result({ gif, onEditAgain, onMakeAnother }: Props) {
         {' · '}
         <button
           type="button"
-          className="underline-offset-4 hover:underline"
+          className="-mx-2 -my-3.5 px-2 py-3.5 underline-offset-4 hover:underline"
           onClick={onMakeAnother}
         >
           Make another

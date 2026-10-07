@@ -52,7 +52,7 @@ export function Settings({ settings, onChange, video, disabled }: Props) {
               checked={settings.preset === name}
               onChange={() => onChange({ ...settings, preset: name })}
             />
-            <span className="block rounded-md px-2 py-1.5 text-center text-sm transition peer-checked:bg-zinc-900 peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-accent peer-disabled:opacity-50 hover:bg-zinc-100 peer-checked:hover:bg-zinc-900 dark:peer-checked:bg-zinc-100 dark:peer-checked:text-zinc-900 dark:hover:bg-zinc-800 dark:peer-checked:hover:bg-zinc-100">
+            <span className="block rounded-md px-1 py-2.5 text-center text-xs transition peer-checked:bg-zinc-900 peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-accent peer-disabled:opacity-50 hover:bg-zinc-100 peer-checked:hover:bg-zinc-900 sm:px-2 sm:py-1.5 sm:text-sm dark:peer-checked:bg-zinc-100 dark:peer-checked:text-zinc-900 dark:hover:bg-zinc-800 dark:peer-checked:hover:bg-zinc-100">
               {name}
             </span>
           </label>
@@ -60,7 +60,7 @@ export function Settings({ settings, onChange, video, disabled }: Props) {
       </div>
       <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
         {description}{' '}
-        <span className="font-mono text-xs text-zinc-500">
+        <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
           · {size} · {quality.fps} fps
         </span>
       </p>
@@ -83,7 +83,7 @@ export function Settings({ settings, onChange, video, disabled }: Props) {
               })
             }
           />
-          <span className="text-right font-mono text-xs text-zinc-500">
+          <span className="text-right font-mono text-xs text-zinc-500 dark:text-zinc-400">
             {quality.size}px
           </span>
 
@@ -103,7 +103,7 @@ export function Settings({ settings, onChange, video, disabled }: Props) {
               })
             }
           />
-          <span className="text-right font-mono text-xs text-zinc-500">
+          <span className="text-right font-mono text-xs text-zinc-500 dark:text-zinc-400">
             {quality.fps} fps
           </span>
         </div>
