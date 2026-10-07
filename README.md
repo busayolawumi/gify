@@ -4,18 +4,15 @@
 
 **[gify.busayolawumi.dev](https://gify.busayolawumi.dev)**
 
-![Gify: Videos, GIF’d.](public/og-image.png)
+![Making a GIF with Gify: choosing a video, cropping it to a square, trimming it and converting it](docs/demo.gif)
 
-<!--
-  Demo GIF: record your screen using Gify, turn the recording into a GIF with
-  Gify itself, save it as docs/demo.gif, and replace the image above with:
-  ![Making a GIF with Gify](docs/demo.gif)
--->
+_This demo was made with Gify: a screen recording, turned into a GIF by Gify itself._
 
 ## What it does
 
 - **Drop in a video:** MP4, MOV or WebM up to 200 MB, including iPhone videos.
-- **Trim it** on a timeline of thumbnails, up to 15 seconds.
+- **Trim it** on a timeline of thumbnails, up to 30 seconds.
+- **Crop it** to a square, 4:5, 16:9 or 9:16, or any shape you like.
 - **Pick a size:** Small, Balanced, High, or set your own size and smoothness.
 - **Download it, or share it** straight to other apps from your phone.
 

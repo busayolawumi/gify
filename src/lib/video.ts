@@ -33,7 +33,9 @@ export function checkVideo(file: File): string | undefined {
 export type Clip = { start: number; end: number }
 
 // GIFs get huge and slow to make past this.
-export const MAX_CLIP_LENGTH = 15
+export const MAX_CLIP_LENGTH = 30
+// Past this, the editor gently warns that the GIF will be big and slow.
+export const LONG_CLIP_LENGTH = 15
 export const MIN_CLIP_LENGTH = 0.5
 
 /** The first 5 seconds, or the whole video if it's shorter. */

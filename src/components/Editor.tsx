@@ -4,7 +4,7 @@ import { CROP_SHAPES, aspectOf, type Crop, type CropShape } from '../lib/crop'
 import { formatSize, formatTime } from '../lib/format'
 import type { Dimensions } from '../lib/settings'
 import { captureFrames } from '../lib/thumbnails'
-import { defaultClip, type Clip } from '../lib/video'
+import { LONG_CLIP_LENGTH, defaultClip, type Clip } from '../lib/video'
 import { CropBox } from './CropBox'
 import { Timeline } from './Timeline'
 
@@ -282,6 +282,12 @@ export function Editor({
             {formatTime(clip.start)} → {formatTime(clip.end)} ·{' '}
             {(clip.end - clip.start).toFixed(1)}s of {formatTime(duration)}
           </p>
+          {clip.end - clip.start > LONG_CLIP_LENGTH && (
+            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+              Long GIFs are big and slow to make. A shorter part is easier to
+              share.
+            </p>
+          )}
         </div>
       )}
       {duration === undefined && preview === 'none' && !unreadable && (
