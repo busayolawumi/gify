@@ -1,3 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <circle cx="16" cy="16" r="12" fill="#8b5cf6" />
+  <!-- A loop: two 130° arcs running clockwise round a circle, each ending in
+       an arrowhead that points at the start of the other. -->
+  <g fill="none" stroke="#8b5cf6" stroke-width="4" stroke-linecap="round">
+    <path d="M7.34 21A10 10 0 0 1 17.74 6.15" />
+    <path d="M24.66 11A10 10 0 0 1 14.26 25.85" />
+  </g>
+  <g fill="#8b5cf6">
+    <path d="M23.16 7.11 15.98 10.41 17.54 1.55Z" />
+    <path d="M8.84 24.89 16.03 21.59 14.47 30.45Z" />
+  </g>
 </svg>
