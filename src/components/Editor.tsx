@@ -149,6 +149,9 @@ export function Editor({
     // Some WebM files report an unknown (infinite) length.
     if (Number.isFinite(v.duration) && v.duration > 0) applyDuration(v.duration)
     else readDurationWithFFmpeg()
+    // Start playing in case `autoPlay` didn't. iOS in Low Power Mode refuses
+    // any video that starts by itself, and then shows its own play button.
+    if (v.paused) v.play().catch(() => {})
   }
 
   function handleError() {
@@ -205,7 +208,17 @@ export function Editor({
         // The crop box sits on top of the video, in a frame the same size.
         <div className="relative">
           <video
-            ref={video}
+            ref={(element) => {
+              video.current = element
+              // iOS only autoplays videos that are muted from the start, and
+              // it checks the `muted` attribute. React only sets the property,
+              // so set the attribute too, before the video starts loading.
+              if (element) {
+                element.defaultMuted = true
+                element.muted = true
+                element.setAttribute('muted', '')
+              }
+            }}
             src={url}
             className="h-[min(60vh,28rem)] w-full rounded-lg bg-zinc-100 object-contain dark:bg-zinc-900"
             autoPlay
