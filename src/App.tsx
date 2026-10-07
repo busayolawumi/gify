@@ -199,7 +199,27 @@ function App() {
           </>
         )}
       </section>
+      <Footer />
     </main>
+  )
+}
+
+// The engine is FFmpeg's GPL build, and the site sends it to every visitor,
+// so the GPL needs its licence and source to be offered. /licenses.txt has
+// both: a short notice with the source link, then the full GPL text.
+function Footer() {
+  const link =
+    'underline-offset-2 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100'
+  return (
+    <footer className="pt-8 text-center text-xs text-zinc-500 dark:text-zinc-400">
+      <a className={link} href="https://github.com/busayolawumi/gify">
+        GitHub
+      </a>
+      {' · '}
+      <a className={link} href="/licenses.txt">
+        Licences
+      </a>
+    </footer>
   )
 }
 

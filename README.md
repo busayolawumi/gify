@@ -40,6 +40,19 @@ Gify removes location and device details from every GIF it makes.
   deadlocks on iPhone (HEVC) video, so Gify uses the single-threaded one, which
   works everywhere.
 
+## Licences
+
+Gify's own code is under the [MIT licence](LICENSE).
+
+Gify makes GIFs with [FFmpeg](https://ffmpeg.org) n5.1.4, using the prebuilt
+ffmpeg.wasm engine (`@ffmpeg/core` 0.12.10). That engine is licensed under
+**GPL-2.0-or-later**, and the site serves it unmodified:
+
+- Source code and build scripts:
+  [ffmpeg.wasm at the 0.12.10 core release](https://github.com/ffmpegwasm/ffmpeg.wasm/tree/71aa99d37c02a7b4c435275ca9ef50e612f6efa1)
+- Licence text: [public/licenses.txt](public/licenses.txt), served at
+  `/licenses.txt` and linked from the site's footer
+
 ## Stack
 
 React, TypeScript, Vite, Tailwind CSS v4 and ffmpeg.wasm, hosted on Vercel.
