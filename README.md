@@ -2,7 +2,7 @@
 
 **Videos, GIF’d.** Pick the best part of any video and make it loop.
 
-**[gify.busayolawumi.dev](https://gify.busayolawumi.dev)**
+**[gify.bsyo.dev](https://gify.bsyo.dev)**
 
 ![Making a GIF with Gify: choosing a video, cropping it to a square, trimming it and converting it](docs/demo.gif)
 
